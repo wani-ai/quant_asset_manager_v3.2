@@ -13,13 +13,14 @@ import config
 
 # 로깅 기본 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
+logger = logging.getLogger(__name__)
 
 def generate_quality_benchmark():
     """
     '꾸준한 성장 기업'(챔피언 그룹)을 식별하고, 이들의 평균 재무 프로필을 계산하여
     'quality_benchmark' 테이블을 데이터베이스에 생성 또는 업데이트합니다.
     """
-    logger = logging.getLogger(__name__)
+
     logger.info("퀄리티 벤치마크 생성을 시작합니다...")
 
     db_engine = get_database_engine()
@@ -64,9 +65,14 @@ def generate_quality_benchmark():
         logger.info("챔피언 그룹의 최신 재무 지표를 로딩합니다...")
         # SQL 쿼리에서 IN 절을 안전하게 사용하기 위해 튜플로 변환
         tickers_tuple = tuple(champion_tickers)
+
+        if not tickers_tuple:
+            logger.warning("챔피언 그룹이 비어 있어 재무 지표를 로딩할 수 없습니다.")
+            return
+          
         query_metrics = f"SELECT * FROM financial_metrics WHERE ticker IN {tickers_tuple}"
         champion_metrics_df = load_data_from_db(query_metrics, db_engine)
-        
+
         if champion_metrics_df.empty:
             logger.error("챔피언 그룹의 재무 지표를 가져올 수 없습니다.")
             return
@@ -76,6 +82,10 @@ def generate_quality_benchmark():
         # 분석에 사용할 지표 목록 (config.py에서 관리)
         benchmark_cols = config.QUALITY_BENCHMARK_COLS
         
+        # 데이터프레임에 존재하는 컬럼만으로 필터링
+        existing_benchmark_cols = [col for col in benchmark_cols if col in champion_metrics_df.columns]
+        
+
         # 이상치에 강한 중앙값(median)을 사용하여 벤치마크 계산
         quality_benchmark = champion_metrics_df[benchmark_cols].median()
         

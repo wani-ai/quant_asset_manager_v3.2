@@ -57,9 +57,10 @@ class SmartDataManager:
 
         self.rate_limits = {
             'alpha_vantage': (4, 60), 'finnhub': (50, 60), 'polygon': (4, 60),
-            'twelve_data': (7, 60), 'quandl': (1800, 600), 'fmp': (20, 60), 'eodhd': (4, 60),
+            'twelve_data': (7, 60), 'quandl': (1800, 600), 'fmp': (15, 60), 'eodhd': (4, 60),
         }
-        
+
+
         self.api_call_tracker = {api_name: deque() for api_name in self.rate_limits.keys()}
         self.api_locks = {api_name: threading.Lock() for api_name in self.rate_limits.keys()}
         self.cache = {}
@@ -201,24 +202,36 @@ class SmartDataManager:
       
 
         # 디버깅 코드 (유지)
-        self.logger.info(f"Finnhub API로부터 총 {len(all_stocks)}개의 종목 정보를 수신했습니다.")
-        if len(all_stocks) > 5:
+        self.logger.info(f"Finnhub API로부터 총 {len(nasdaq_stocks)}개의 종목 정보를 수신했습니다.")
+        if len(nasdaq_stocks) > 5:
             self.logger.info("수신된 데이터 샘플 (상위 5개):")
             for i in range(5):
-                print(all_stocks[i])
+                print(nasdaq_stocks[i])
         
-        # ✨✨✨ 핵심 수정 사항: 필터링 로직 수정 ✨✨✨
-        tickers = []
-        for stock in all_stocks:
-            symbol = stock.get('symbol', '')
-            # .upper()를 사용하여 대소문자 구분 없이 비교
-            stock_type = stock.get('type', '').upper()
-            
-            if (stock_type == 'COMMON STOCK' and 
-                '.' not in symbol and '$' not in symbol):
-                tickers.append(symbol)
+    def get_nasdaq_symbols(self, cache_hours: int = 24) -> List[str]:
+        """
+        FMP API를 사용하여 나스닥에 상장된 모든 기업의 티커 리스트를 가져옵니다.
+        :param cache_hours: 캐시 유지 시간 (시간)
+        :return: 필터링된 티커 심볼 리스트
+        """
+        self.logger.info("FMP API를 통해 나스닥 상장 기업 리스트를 조회합니다...")
         
-        self.logger.info(f"총 {len(tickers)}개의 종목을 필터링했습니다.")
+        nasdaq_stocks = self._get_data(
+            api_name='fmp',
+            endpoint='nasdaq_constituent', # 나스닥 구성 종목 전용 엔드포인트
+            cache_ttl=cache_hours * 3600
+        )
+        
+        if not nasdaq_stocks or not isinstance(nasdaq_stocks, list):
+            self.logger.warning("나스닥 종목 리스트를 가져올 수 없거나, 형식이 올바르지 않습니다.")
+            return []
+        
+        # FMP 응답에서 'symbol' 키만 추출하고, 유효한 값만 필터링
+        tickers = [
+            stock.get('symbol') for stock in nasdaq_stocks if stock and stock.get('symbol')
+        ]
+        
+        self.logger.info(f"총 {len(tickers)}개의 나스닥 상장 종목을 성공적으로 가져왔습니다.")
         return tickers
     
     # ... (get_historical_market_cap, get_financial_ratios_ttm 등 다른 메서드들은 이전과 동일) ...

@@ -5,9 +5,12 @@ import numpy as np
 import logging
 import statsmodels.api as sm
 from sqlalchemy import Engine
+from typing import List, Dict, Any, Optional
+import pandas_ta as ta  # ✨✨✨ ATR 계산을 위해 추가합니다. ✨✨✨
 
 # 시스템의 다른 모듈에서 클래스와 함수를 불러옵니다.
 from data.connectors import SmartDataManager
+from data.database import load_data_from_db
 import config
 
 class PortfolioRiskAnalyzer:
@@ -28,23 +31,22 @@ class PortfolioRiskAnalyzer:
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def _get_portfolio_returns(self, tickers: list, period: str = "1y", weights: list = None) -> pd.Series:
+    def _get_portfolio_returns(self, tickers: List[str], period: str = "1y", weights: Optional[List[float]] = None) -> Optional[pd.Series]:
         """포트폴리오의 일일 수익률 시계열을 계산합니다."""
         all_prices = []
         for ticker in tickers:
-            # SmartDataManager를 통해 개별 종목의 수정 종가 데이터를 가져옵니다.
-            # 가정: data_manager에 해당 기능이 구현되어 있음.
-            prices = self.data_manager.get_historical_prices(ticker, period=period)
-            if prices is not None:
-                all_prices.append(prices['adjClose'].rename(ticker))
+            # ✨✨✨ 핵심 수정: 변수명을 prices에서 prices_df로 변경하여 오류를 해결합니다. ✨✨✨
+            prices_df = self.data_manager.get_historical_prices(ticker, period=period)
+            if prices_df is not None and not prices_df.empty:
+                all_prices.append(prices_df['close'].rename(ticker)) # 수정종가(adjClose)가 없다면 종가(close) 사용
         
         if not all_prices:
-            raise ValueError("포트폴리오를 구성하는 종목의 가격 데이터를 가져올 수 없습니다.")
+            self.logger.error("포트폴리오를 구성하는 종목의 가격 데이터를 가져올 수 없습니다.")
+            return None
 
-        prices_df = pd.concat(all_prices, axis=1)
+        prices_df = pd.concat(all_prices, axis=1).fillna(method='ffill')
         returns_df = prices_df.pct_change().dropna()
 
-        # 가중치가 주어지지 않으면 동일 가중으로 계산
         if weights is None:
             weights = np.array([1/len(tickers)] * len(tickers))
         
@@ -53,26 +55,51 @@ class PortfolioRiskAnalyzer:
 
     def _calculate_cvar(self, returns: pd.Series, alpha: float = 0.99) -> float:
         """역사적 시뮬레이션 기반으로 Conditional Value at Risk (CVaR)를 계산합니다."""
-        if returns.empty:
-            return 0.0
-        
+        if returns is None or returns.empty: return 0.0
         var_level = returns.quantile(1 - alpha)
         cvar = returns[returns <= var_level].mean()
-        return cvar
+        return cvar if pd.notna(cvar) else 0.0
 
     def _calculate_max_drawdown(self, returns: pd.Series) -> float:
         """최대 낙폭(Maximum Drawdown)을 계산합니다."""
+        if returns is None or returns.empty: return 0.0
         cumulative_returns = (1 + returns).cumprod()
         peak = cumulative_returns.cummax()
         drawdown = (cumulative_returns - peak) / peak
-        return drawdown.min()
+        return drawdown.min() if pd.notna(drawdown.min()) else 0.0
 
-    def _calculate_sharpe_ratio(self, returns: pd.Series, risk_free_rate: float = 0.0) -> float:
-        """샤프 지수(Sharpe Ratio)를 계산합니다."""
-        excess_returns = returns - risk_free_rate / 252 # 일일 무위험 수익률로 변환
-        # 연율화 (일일 데이터 기준)
+    def _calculate_sharpe_ratio(self, returns: pd.Series) -> float:
+        """연율화된 샤프 지수(Sharpe Ratio)를 계산합니다."""
+        if returns is None or returns.empty or returns.std() == 0: return 0.0
+        # 가정: 무위험 수익률은 0으로 간주 (또는 FRED에서 가져와야 함)
+        risk_free_rate = 0.0
+        excess_returns = returns - risk_free_rate / 252
         sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * np.sqrt(252)
-        return sharpe_ratio
+        return sharpe_ratio if pd.notna(sharpe_ratio) else 0.0
+        
+    def get_single_stock_volatility(self, ticker: str, period: str = "1y") -> Dict[str, Any]:
+        """단일 종목의 변동성 관련 지표를 계산합니다."""
+        self.logger.info(f"'{ticker}' 종목의 변동성 분석을 시작합니다.")
+        prices_df = self.data_manager.get_historical_prices(ticker, period=period)
+        if prices_df is None or prices_df.empty:
+            return {'error': '가격 데이터를 가져올 수 없습니다.'}
+        
+        returns = prices_df['close'].pct_change()
+        # Historical Volatility (연율화)
+        historical_volatility = returns.std() * np.sqrt(252)
+        
+        # ATR (Average True Range) 계산
+        if hasattr(prices_df, 'ta'):
+             prices_df.ta.atr(append=True)
+             atr = prices_df.iloc[-1].get(f"ATRr_14", 0) # 기본값 14
+        else:
+            atr = 0
+
+        return {
+            'historical_volatility_annualized': historical_volatility,
+            'atr_14': atr
+            # Implied Volatility(IV)는 옵션 데이터가 필요하므로 여기서는 생략
+        }
 
     def _calculate_macro_exposure(self, portfolio_returns: pd.Series) -> dict:
         """포트폴리오의 거시경제 리스크(금리, 인플레이션) 노출도를 분석합니다."""
@@ -125,40 +152,43 @@ class PortfolioRiskAnalyzer:
 
     def _normalize_score(self, value, min_val, max_val, higher_is_better=False):
         """값을 0-100점 척도로 정규화합니다. 높은 점수 = 낮은 리스크"""
-        if higher_is_better:
-            score = 100 * (value - min_val) / (max_val - min_val)
-        else:
-            score = 100 * (1 - (value - min_val) / (max_val - min_val))
-        return np.clip(score, 0, 100)
-    
-    def generate_full_report(self, tickers: list, weights: list = None) -> dict:
-        """
-        주어진 포트폴리오에 대한 종합 리스크 리포트를 생성합니다.
+        if max_val == min_val: return 50.0 # 분모가 0이 되는 경우 방지
+        
+        # 값의 범위를 [0, 1]로 클리핑
+        scaled_value = (value - min_val) / (max_val - min_val)
+        scaled_value = np.clip(scaled_value, 0, 1)
 
-        :param tickers: 포트폴리오를 구성하는 주식 티커 리스트.
-        :param weights: 각 주식의 가중치. None일 경우 동일 가중.
-        :return: 모든 리스크 지표와 점수를 포함하는 딕셔너리.
-        """
+        if higher_is_better:
+            return scaled_value * 100
+        else:
+            return (1 - scaled_value) * 100
+    
+    def generate_full_report(self, tickers: List[str], weights: Optional[List[float]] = None) -> Optional[Dict[str, Any]]:
+        """주어진 포트폴리오에 대한 종합 리스크 리포트를 생성합니다."""
         self.logger.info(f"포트폴리오 {tickers}에 대한 종합 리스크 분석을 시작합니다.")
+        
         try:
             portfolio_returns = self._get_portfolio_returns(tickers, weights=weights)
+            if portfolio_returns is None:
+                return None
 
             # 1. 핵심 리스크 지표 계산
             cvar_99 = self._calculate_cvar(portfolio_returns, alpha=0.99)
             max_dd = self._calculate_max_drawdown(portfolio_returns)
             sharpe = self._calculate_sharpe_ratio(portfolio_returns)
+            
+            # (향후 확장) 거시경제 및 파마-프렌치 분석 로직 호출
             macro_exposure = self._calculate_macro_exposure(portfolio_returns)
             ff_exposure = self._calculate_fama_french_exposure(portfolio_returns)
-            
+
             # 2. 각 지표 점수화
-            cvar_score = self._normalize_score(cvar_99, min_val=-0.05, max_val=0) # CVaR -5% = 0점, 0% = 100점
-            mdd_score = self._normalize_score(max_dd, min_val=-0.30, max_val=0)  # MDD -30% = 0점, 0% = 100점
-            sharpe_score = self._normalize_score(sharpe, min_val=0, max_val=2.0, higher_is_better=True) # 샤프 0 = 0점, 2 = 100점
-            # ... 기타 리스크 지표에 대한 점수화 로직 추가 ...
+            # 점수화 범위와 기준은 config.py에서 관리
+            cvar_score = self._normalize_score(cvar_99, -0.05, 0) # CVaR -5% = 0점, 0% = 100점
+            mdd_score = self._normalize_score(max_dd, -0.30, 0)  # MDD -30% = 0점, 0% = 100점
+            sharpe_score = self._normalize_score(sharpe, 0, 2.0, higher_is_better=True) # 샤프 0 = 0점, 2 = 100점
 
             # 3. 종합 리스크 점수 산출
-            # 이 가중치는 config.py에서 관리해야 합니다.
-            risk_weights = self.config.RISK_SCORE_WEIGHTS
+            risk_weights = getattr(self.config, 'RISK_SCORE_WEIGHTS', {})
             composite_risk_score = (
                 cvar_score * risk_weights.get('cvar', 0.4) +
                 mdd_score * risk_weights.get('mdd', 0.3) +
@@ -167,11 +197,7 @@ class PortfolioRiskAnalyzer:
 
             report = {
                 'composite_risk_score': composite_risk_score,
-                'scores': {
-                    'cvar_score': cvar_score,
-                    'mdd_score': mdd_score,
-                    'sharpe_score': sharpe_score
-                },
+                'scores': {'cvar_score': cvar_score, 'mdd_score': mdd_score, 'sharpe_score': sharpe_score},
                 'raw_metrics': {
                     'cvar_99': cvar_99,
                     'max_drawdown': max_dd,
@@ -183,6 +209,6 @@ class PortfolioRiskAnalyzer:
             return report
 
         except Exception as e:
-            self.logger.error(f"포트폴리오 리스크 분석 중 오류 발생: {e}")
+            self.logger.error(f"포트폴리오 리스크 분석 중 오류 발생: {e}", exc_info=True)
             return {'error': str(e)}
 

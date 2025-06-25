@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 # 시스템의 다른 모듈에서 DB 연결 및 유틸리티 함수를 불러옵니다.
 # 스크립트 실행 경로를 고려하여 sys.path에 프로젝트 루트를 추가해야 할 수 있습니다.
 # import sys
-# sys.path.append('.')
+sys.path.append('.')
 from data.database import get_database_engine, load_data_from_db, save_df_to_db
 import config
 

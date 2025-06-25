@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 # PDF 처리를 위한 라이브러리 (pip install PyPDF2 필요)
-import PyPDF2
+# import PyPDF2
 
 # 시스템의 다른 모듈에서 DB 연결 및 유틸리티 함수를 불러옵니다.
 # import sys
@@ -58,16 +58,16 @@ def extract_key_sections_from_filings():
                 logger.info(f"10-K 보고서가 아니므로 건너뜁니다: {pdf_path.name}")
                 continue
 
-            # PDF에서 텍스트 읽기
-            with open(pdf_path, 'rb') as file:
-                reader = PyPDF2.PdfReader(file)
-                full_text = "".join(page.extract_text() for page in reader.pages)
+            # # PDF에서 텍스트 읽기
+            # with open(pdf_path, 'rb') as file:
+            #     reader = PyPDF2.PdfReader(file)
+            #     full_text = "".join(page.extract_text() for page in reader.pages)
 
-            # --- 3. 정규 표현식을 사용한 'Risk Factors' 섹션 검색 ---
-            # SEC 보고서의 "Item 1A." 패턴을 대소문자, 공백 변형을 고려하여 검색
-            # (?s)는 줄바꿈 문자(newline)도 '.'에 포함되도록 하는 플래그
-            pattern = re.compile(r"(?is)Item\s*1A\.(?:\s*|&nbsp;)*Risk\s*Factors\.(.*?)(?:Item\s*1B\.|Item\s*2\.)", re.DOTALL)
-            match = pattern.search(full_text)
+            # # --- 3. 정규 표현식을 사용한 'Risk Factors' 섹션 검색 ---
+            # # SEC 보고서의 "Item 1A." 패턴을 대소문자, 공백 변형을 고려하여 검색
+            # # (?s)는 줄바꿈 문자(newline)도 '.'에 포함되도록 하는 플래그
+            # pattern = re.compile(r"(?is)Item\s*1A\.(?:\s*|&nbsp;)*Risk\s*Factors\.(.*?)(?:Item\s*1B\.|Item\s*2\.)", re.DOTALL)
+            # match = pattern.search(full_text)
             
             risk_factors_text = ""
             if match:
