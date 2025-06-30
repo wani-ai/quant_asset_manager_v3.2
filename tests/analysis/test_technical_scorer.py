@@ -6,28 +6,11 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-import sys
-import os
+# 변경 전 (오류 발생 코드)
+# from analysis.technical_scorer import TechnicalScorer
 
-# 프로젝트 루트 디렉토리를 sys.path에 추가
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-try:
-    from analysis.technical_scorer import TechnicalScorer
-except ImportError:
-    try:
-        from ...analysis.technical_scorer import TechnicalScorer
-    except ImportError:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "technical_scorer", 
-            os.path.join(project_root, "analysis", "technical_scorer.py")
-        )
-        technical_scorer_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(technical_scorer_module)
-        TechnicalScorer = technical_scorer_module.TechnicalScorer
+# 변경 후
+from analysis.metrics.technical_scorer import TechnicalScorer
 
 @pytest.fixture
 def mock_data_manager():

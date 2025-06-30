@@ -7,28 +7,8 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
-import sys
-import os
+from analysis.metrics.relative_valuator import RelativeValuator
 
-# 프로젝트 루트 디렉토리를 sys.path에 추가
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
-try:
-    from analysis.relative_valuator import RelativeValuator
-except ImportError:
-    try:
-        from ...analysis.relative_valuator import RelativeValuator
-    except ImportError:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "relative_valuator", 
-            os.path.join(project_root, "analysis", "relative_valuator.py")
-        )
-        relative_valuator_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(relative_valuator_module)
-        RelativeValuator = relative_valuator_module.RelativeValuator
 
 @pytest.fixture
 def sample_financial_data() -> pd.DataFrame:
@@ -105,7 +85,7 @@ class TestRelativeValuator:
         def mock_load_data(query, engine):
             return sample_financial_data
         
-        monkeypatch.setattr("analysis.relative_valuator.load_data_from_db", mock_load_data)
+        monkeypatch.setattr("analysis.metrics.relative_valuator.load_data_from_db", mock_load_data)
         
         RelativeValuator._load_quality_benchmark = MagicMock(return_value=pd.Series({
             'avg_roe': 0.15, 'avg_debt_to_equity': 1.0, 'avg_operating_margin': 0.1

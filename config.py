@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 프로젝트의 루트 디렉토리를 기준으로 모든 경로를 설정하여 OS 호환성을 확보합니다.
-BASE_DIR = Path(__file__).resolve().parent.parent # config.py가 루트에 있으므로 .parent 한번만
+BASE_DIR = Path(__file__).resolve().parent # config.py가 루트에 있으므로 .parent 한번만
 
 # 주요 디렉토리 경로 정의
 LOG_DIR = BASE_DIR / "logs"

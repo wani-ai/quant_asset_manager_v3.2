@@ -46,9 +46,9 @@ def sample_prediction_data() -> pd.DataFrame:
 
 class DummyStrategy(bt.Strategy):
     """테스트를 위한 최소한의 기능을 가진 가짜 전략."""
-    def __init__(self):
+    def __init__(self,**kwargs):
         self.order = None
-
+        self.rebalanced = False
     def next(self):
         # 간단한 매수/매도 로직
         if self.order:

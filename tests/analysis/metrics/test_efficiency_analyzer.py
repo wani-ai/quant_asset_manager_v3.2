@@ -20,7 +20,7 @@ def high_efficiency_data() -> pd.DataFrame:
     data = {
         'assetTurnover': [1.5],         # 총자산회전율 높음
         'inventoryTurnover': [12.0],    # 재고자산회전율 높음
-        'receivablesTurnover': [15.0],  # 매출채권회전율 높음
+        'receivables_turnover': [15.0],  # 매출채권회전율 높음
     }
     return pd.DataFrame(data)
 

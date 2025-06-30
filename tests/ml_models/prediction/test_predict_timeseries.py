@@ -58,7 +58,7 @@ def mock_timeseries_model(mock_config):
     model_dir = Path(mock_config.ML_MODELS_DIR) / 'saved_models'
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / "timeseries_forecast_model_roe.pt"
-    model.save(model_path)
+    model.save(str(model_path))
     
     return model, model_path
 
@@ -79,7 +79,7 @@ class TestPredictTimeseries:
         monkeypatch.setattr("ml_models.prediction.predict_timeseries.load_data_from_db", lambda q, e, params: sample_timeseries_data)
         
         with patch('ml_models.prediction.predict_timeseries.config', mock_config):
-            series = prepare_prediction_input_series(mock_db_engine, 'roe', 'cluster_label', '1')
+            series = prepare_prediction_input_series(mock_db_engine, 'roe', '1')
         
         assert isinstance(series, TimeSeries)
         assert len(series) == len(sample_timeseries_data)
@@ -91,17 +91,18 @@ class TestPredictTimeseries:
         monkeypatch.setattr("ml_models.prediction.predict_timeseries.load_data_from_db", lambda q, e, params: insufficient_data)
         
         with patch('ml_models.prediction.predict_timeseries.config', mock_config):
-            series = prepare_prediction_input_series(mock_db_engine, 'roe', 'cluster_label', '1')
+            series = prepare_prediction_input_series(mock_db_engine, 'roe', '1')
             
         assert series is None
 
     def test_predict_future_metrics(self, mock_timeseries_model):
         """모델 예측 로직을 테스트합니다."""
-        model, _ = mock_timeseries_model
+        model = mock_timeseries_model
         
         # 테스트용 입력 시계열 생성
         input_series = TimeSeries.from_values(np.random.rand(model.input_chunk_length))
         
+        model.fit(input_series)
         result_df = predict_future_metrics(model, input_series)
         
         assert isinstance(result_df, pd.DataFrame)
