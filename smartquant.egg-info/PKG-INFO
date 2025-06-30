@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: smartquant
+Version: 0.1.0
+Summary: A quant asset manager project
+Author-email: Your Name <your@email.com>
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8

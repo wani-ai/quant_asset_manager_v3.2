@@ -1,0 +1,7 @@
+analysis
+app
+backtesting
+data
+ml_models
+scripts
+tests

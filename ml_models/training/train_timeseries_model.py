@@ -10,7 +10,7 @@ from pathlib import Path
 from darts import TimeSeries
 from darts.models import TFTModel, NBEATSModel # Transformer, N-BEATS 등 최신 모델 사용
 from darts.dataprocessing.transformers import Scaler
-from darts.utils.timeseries_split import train_test_split
+# from darts.utils.timeseries_split import train_test_split
 
 # 시스템의 다른 모듈에서 DB 연결 및 유틸리티 함수를 불러옵니다.
 # import sys

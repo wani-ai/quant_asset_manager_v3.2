@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 from ml_models.prediction.predict_stock_returns import (
     load_prediction_model,
     prepare_prediction_data,
-    predict_with_ranking_model
+    predict_stock_returns
 )
 
 # --- 테스트에 사용할 가짜 데이터와 객체를 미리 만들어주는 Pytest Fixture ---
@@ -89,14 +89,14 @@ class TestPredictStockReturns:
         assert not df.empty
         assert 'AAPL' in df.index
 
-    def test_predict_with_ranking_model(self, mock_model, sample_prediction_features, mock_config):
+    def test_predict_stock_returns(self, mock_model, sample_prediction_features, mock_config):
         """모델 예측 및 랭킹 생성 로직을 테스트합니다."""
         model, _ = mock_model
         # ticker를 인덱스로 설정하여 함수 입력 형식에 맞춤
         features_df = sample_prediction_features.set_index('ticker')
         
         with patch('ml_models.prediction.predict_stock_returns.config', mock_config):
-            result_df = predict_with_ranking_model(model, features_df)
+            result_df = predict_stock_returns(model, features_df)
         
         assert isinstance(result_df, pd.DataFrame)
         assert not result_df.empty
@@ -116,7 +116,7 @@ class TestPredictStockReturns:
         features_df = sample_prediction_features.drop(columns=['feature2']).set_index('ticker')
         
         with patch('ml_models.prediction.predict_stock_returns.config', mock_config):
-            result_df = predict_with_ranking_model(model, features_df)
+            result_df = predict_stock_returns(model, features_df)
             
         assert result_df is None
 

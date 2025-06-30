@@ -13,3 +13,4 @@ This package contains modules for:
 
 # 이 파일은 analysis 디렉토리를 파이썬 패키지로 만들기 위해 존재하며,
 # 다른 모듈을 미리 임포트하지 않습니다.
+# 이를 통해 순환 참조(Circular Import) 문제를 방지합니다.
