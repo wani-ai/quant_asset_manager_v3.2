@@ -1,14 +1,33 @@
-# /tests/analysis/test_technical_scorer.py
+# =============================================================================
+# 수정된 tests/analysis/test_technical_scorer.py
+# =============================================================================
 
 import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
+import sys
+import os
 
-# 테스트할 대상 클래스를 불러옵니다.
-from analysis.technical_scorer import TechnicalScorer
+# 프로젝트 루트 디렉토리를 sys.path에 추가
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# --- 테스트에 사용할 가짜 데이터와 객체를 미리 만들어주는 Pytest Fixture ---
+try:
+    from analysis.technical_scorer import TechnicalScorer
+except ImportError:
+    try:
+        from ...analysis.technical_scorer import TechnicalScorer
+    except ImportError:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "technical_scorer", 
+            os.path.join(project_root, "analysis", "technical_scorer.py")
+        )
+        technical_scorer_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(technical_scorer_module)
+        TechnicalScorer = technical_scorer_module.TechnicalScorer
 
 @pytest.fixture
 def mock_data_manager():
@@ -36,6 +55,7 @@ def mock_config():
 def sample_ohlcv_data() -> pd.DataFrame:
     """테스트용 가짜 시계열 OHLCV 데이터 DataFrame을 생성합니다."""
     dates = pd.to_datetime(pd.date_range(start='2023-01-01', periods=252))
+    np.random.seed(42)  # 재현 가능한 결과를 위해 시드 설정
     close_prices = 100 + np.cumsum(np.random.randn(252))
     df = pd.DataFrame({
         'open': close_prices - np.random.rand(252),
@@ -46,14 +66,12 @@ def sample_ohlcv_data() -> pd.DataFrame:
     }, index=dates)
     return df
 
-# --- TechnicalScorer 클래스를 위한 메인 테스트 클래스 ---
-
 class TestTechnicalScorer:
 
     def test_initialization(self, mock_data_manager, mock_config):
         """클래스가 올바르게 초기화되는지 테스트합니다."""
         scorer = TechnicalScorer(data_manager=mock_data_manager)
-        scorer.config = mock_config # 가짜 config 주입
+        scorer.config = mock_config
         assert scorer.data_manager is not None
         assert scorer.params['sma_short'] == 10
 
@@ -64,7 +82,6 @@ class TestTechnicalScorer:
         
         result_df = scorer._calculate_indicators(sample_ohlcv_data)
         
-        # 주요 지표 컬럼들이 생성되었는지 확인
         assert f"SMA_{mock_config.TECHNICAL_ANALYSIS_PARAMS['sma_long']}" in result_df.columns
         assert f"RSI_{mock_config.TECHNICAL_ANALYSIS_PARAMS['rsi_period']}" in result_df.columns
         assert f"MACD_{mock_config.TECHNICAL_ANALYSIS_PARAMS['macd_fast']}_{mock_config.TECHNICAL_ANALYSIS_PARAMS['macd_slow']}_{mock_config.TECHNICAL_ANALYSIS_PARAMS['macd_signal']}" in result_df.columns
@@ -77,18 +94,13 @@ class TestTechnicalScorer:
         df_with_indicators = scorer._calculate_indicators(sample_ohlcv_data)
         df_with_zscores = scorer._calculate_z_scores(df_with_indicators)
         
-        # Z-점수 컬럼들이 생성되었는지 확인
         for col in mock_config.TECHNICAL_ANALYSIS_PARAMS['z_score_columns']:
             assert f'{col}_zscore' in df_with_zscores.columns
         
-        # Z-점수의 평균은 0에 가까워야 함 (롤링이므로 완벽히 0은 아님)
         assert abs(df_with_zscores[f"RSI_{mock_config.TECHNICAL_ANALYSIS_PARAMS['rsi_period']}_zscore"].mean()) < 0.5
 
     def test_get_scores_for_tickers(self, mock_data_manager, mock_config, sample_ohlcv_data):
-        """
-        전체 점수 산출 프로세스를 테스트합니다.
-        """
-        # data_manager의 메서드가 항상 우리의 샘플 데이터를 반환하도록 설정
+        """전체 점수 산출 프로세스를 테스트합니다."""
         mock_data_manager.get_historical_prices.return_value = sample_ohlcv_data
         
         scorer = TechnicalScorer(data_manager=mock_data_manager)
@@ -96,13 +108,10 @@ class TestTechnicalScorer:
         
         score_df = scorer.get_scores_for_tickers(['TEST1', 'TEST2'])
         
-        # 결과물의 구조가 올바른지 확인
         assert isinstance(score_df, pd.DataFrame)
         assert not score_df.empty
         assert 'technical_score' in score_df.columns
         assert 'TEST1' in score_df.index
         
-        # 점수가 0-100 사이의 값인지 확인
         score = score_df.loc['TEST1']['technical_score']
         assert 0 <= score <= 100
-

@@ -1,18 +1,39 @@
-# /tests/analysis/test_relative_valuator.py
+
+# =============================================================================
+# 수정된 tests/analysis/test_relative_valuator.py
+# =============================================================================
 
 import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
+import sys
+import os
 
-# 테스트할 대상 클래스를 불러옵니다.
-from analysis.relative_valuator import RelativeValuator
+# 프로젝트 루트 디렉토리를 sys.path에 추가
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-# --- 테스트에 사용할 가짜 데이터와 객체를 미리 만들어주는 Pytest Fixture ---
+try:
+    from analysis.relative_valuator import RelativeValuator
+except ImportError:
+    try:
+        from ...analysis.relative_valuator import RelativeValuator
+    except ImportError:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "relative_valuator", 
+            os.path.join(project_root, "analysis", "relative_valuator.py")
+        )
+        relative_valuator_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(relative_valuator_module)
+        RelativeValuator = relative_valuator_module.RelativeValuator
 
 @pytest.fixture
 def sample_financial_data() -> pd.DataFrame:
     """테스트용 가짜 재무 데이터 DataFrame을 생성합니다."""
+    np.random.seed(42)  # 재현 가능한 결과를 위해 시드 설정
     data = {
         'ticker': [f'TICKER{i}' for i in range(20)],
         'grossProfitMargin': np.random.rand(20) * 0.5 + 0.2,
@@ -43,13 +64,10 @@ def mock_config():
         FINAL_COMPOSITE_WEIGHTS = { 'relative': 0.7, 'absolute': 0.3 }
     return MockConfig()
 
-# --- RelativeValuator 클래스를 위한 메인 테스트 클래스 ---
-
 class TestRelativeValuator:
     
     def test_initialization(self, mock_db_engine):
         """클래스가 올바르게 초기화되는지 테스트합니다."""
-        # _load_quality_benchmark 메서드가 DB에 접근하지 않도록 가짜 함수로 대체
         RelativeValuator._load_quality_benchmark = MagicMock(return_value=pd.Series({'avg_roe': 0.15}))
         
         analyzer = RelativeValuator(db_engine=mock_db_engine)
@@ -59,15 +77,12 @@ class TestRelativeValuator:
     def test_create_dynamic_peer_groups(self, mock_db_engine, sample_financial_data, mock_config):
         """동적 피어 그룹 생성 로직을 테스트합니다."""
         analyzer = RelativeValuator(db_engine=mock_db_engine)
-        analyzer.config = mock_config # 가짜 config 주입
+        analyzer.config = mock_config
 
         result_df = analyzer._create_dynamic_peer_groups(sample_financial_data)
         
-        # 'cluster_label' 컬럼이 추가되었는지 확인
         assert 'cluster_label' in result_df.columns
-        # 생성된 클러스터의 개수가 예상과 같은지 확인
         assert result_df['cluster_label'].nunique() == mock_config.OPTIMAL_K_CLUSTERS
-        # 모든 기업이 그대로 남아있는지 확인
         assert len(result_df) == len(sample_financial_data)
 
     def test_calculate_relative_scores(self, mock_db_engine, sample_financial_data, mock_config):
@@ -78,20 +93,20 @@ class TestRelativeValuator:
         clustered_df = analyzer._create_dynamic_peer_groups(sample_financial_data)
         scored_df = analyzer._calculate_relative_scores(clustered_df)
         
-        # Z-점수 컬럼들이 생성되었는지 확인
         for metric in mock_config.METRICS_FOR_SCORING.keys():
             assert f'{metric}_z_score' in scored_df.columns
         
-        # Z-점수의 평균은 0에 가까워야 함 (간단한 검증)
         assert abs(scored_df['roe_z_score'].mean()) < 0.1
 
     def test_run_full_valuation(self, mock_db_engine, sample_financial_data, mock_config, monkeypatch):
         """전체 가치평가 프로세스를 테스트합니다."""
         
-        # DB에서 데이터를 로드하는 함수를 가짜 함수로 대체하여, 항상 우리의 샘플 데이터를 반환하도록 설정
-        monkeypatch.setattr("analysis.relative_valuator.load_data_from_db", lambda q, e: sample_financial_data)
+        # 데이터 로드 함수를 모킹
+        def mock_load_data(query, engine):
+            return sample_financial_data
         
-        # 퀄리티 벤치마크 로딩도 가짜 함수로 대체
+        monkeypatch.setattr("analysis.relative_valuator.load_data_from_db", mock_load_data)
+        
         RelativeValuator._load_quality_benchmark = MagicMock(return_value=pd.Series({
             'avg_roe': 0.15, 'avg_debt_to_equity': 1.0, 'avg_operating_margin': 0.1
         }))
@@ -101,14 +116,9 @@ class TestRelativeValuator:
         
         final_df = analyzer.run_full_valuation(strategy='blend')
         
-        # 최종 결과물의 구조가 올바른지 확인
         assert isinstance(final_df, pd.DataFrame)
         assert not final_df.empty
         assert 'rank' in final_df.columns
         assert 'final_score' in final_df.columns
-        
-        # 랭킹이 올바르게 매겨졌는지 확인 (1등은 1.0)
         assert final_df.iloc[0]['rank'] == 1.0
-        
-        # 순위 기준으로 정렬되었는지 확인
         assert final_df['rank'].is_monotonic_increasing
